@@ -18,13 +18,23 @@ from sklearn.model_selection import (
     cross_val_score,
     GridSearchCV,
 )
-from sklearn.metrics import f1_score, make_scorer
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    make_scorer,
+    confusion_matrix,
+    classification_report,
+)
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
 from sklearn.impute import KNNImputer
 
 # dataset being used: https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data
+
+seed = 99
 
 ###########################################
 ### Ingest Data ###
@@ -37,31 +47,19 @@ data = pd.read_csv("data/breast_cancer_wisconsin.csv")
 y = data["diagnosis"]
 
 # separate the non-class, x, data
-"""
+
 x = data.drop(
     ["diagnosis", "radius_mean", "texture_mean", "smoothness_mean", "id"],
     axis=1,
 )
-"""
 
-x = data[["perimeter_mean", "area_mean", "compactness_mean"]]
 
 # remove empty column
-# x = x.iloc[:, :-1]
+x = x.iloc[:, :-1]
 
 
-# Introduce 30% missingness
+# Introduce missingness
 def introduce_missingness(df, missing_percentage=0.3):
-    """
-    Introduce missing values randomly into a DataFrame.
-
-    Parameters:
-    - df: pd.DataFrame, the input DataFrame.
-    - missing_percentage: float, the fraction of missing values to introduce.
-
-    Returns:
-    - df_with_missing: pd.DataFrame with missing values.
-    """
     df_with_missing = df.copy()
     n_total_values = df.size  # Total number of values in the DataFrame
     n_missing = int(
@@ -82,14 +80,14 @@ def introduce_missingness(df, missing_percentage=0.3):
 
 
 # Add Gaussian noise
-# x += np.random.normal(0, 0.1, x.shape)
+x += np.random.normal(0, 0.3, x.shape)
 
 # Apply the function
-x = introduce_missingness(x, missing_percentage=0.7)
+x = introduce_missingness(x, missing_percentage=0.5)
 
 
 # Seed for reproducibility
-np.random.seed(42)
+np.random.seed(seed)
 
 # Encode labels using sklearn's LabelEncoder
 label_encoder = LabelEncoder()
@@ -191,7 +189,6 @@ def create_pcas(x, y):
 
 
 def data_leak_anal(x, y):
-
     # Pre-processing
     imputer = SimpleImputer(strategy="mean")  # Handle missing values
     scaler = StandardScaler()  # Standardize the data
@@ -199,43 +196,45 @@ def data_leak_anal(x, y):
     x_imputed = imputer.fit_transform(x)  # Impute missing values
     x_scaled = scaler.fit_transform(x_imputed)  # Scale the data
 
-    # Custom Scorer (F1 Score for Classification)
-    f1_scorer = make_scorer(f1_score, average="weighted")
+    # Cross-validation setup
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
 
-    # Grid Search for SVM Hyperparameters
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    best_score = -1
-    best_params = None
+    # Metrics for each fold
+    accuracy_scores = []
+    precision_scores = []
+    recall_scores = []
+    f1_scores = []
 
-    # Define hyperparameter grid
-    param_grid = {
-        "C": [0.1, 1, 10, 100],  # Regularization parameter
-        "kernel": ["linear"],  # Kernel types
-        "gamma": ["scale", "auto"],  # Kernel coefficient for rbf
-    }
+    # Run cross-validation
+    for train_idx, test_idx in cv.split(x_scaled, y):
+        x_train, x_test = x_scaled[train_idx], x_scaled[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
 
-    # Grid Search Loop
-    for C in param_grid["C"]:
-        for kernel in param_grid["kernel"]:
-            for gamma in param_grid["gamma"]:
-                svm = SVC(C=C, kernel=kernel, gamma=gamma, random_state=42)
-                scores = cross_val_score(
-                    svm, x_scaled, y, cv=cv, scoring=f1_scorer
-                )
-                mean_score = np.mean(scores)
+        # Train SVM
+        svm = SVC(C=1, kernel="linear", random_state=seed)
+        svm.fit(x_train, y_train)
 
-                if mean_score > best_score:
-                    best_score = mean_score
-                    best_params = {
-                        "C": C,
-                        "kernel": kernel,
-                        "gamma": gamma,
-                    }
+        # Predict on test set
+        y_pred = svm.predict(x_test)
 
-    # Output the best parameters and F1 score
-    print("SVM with data leakage: ")
-    print(f"Best Parameters: {best_params}")
-    print(f"Best Mean F1 Score: {best_score:.2f}")
+        # Calculate metrics
+        accuracy_scores.append(accuracy_score(y_test, y_pred))
+        precision_scores.append(
+            precision_score(y_test, y_pred, average="weighted")
+        )
+        recall_scores.append(recall_score(y_test, y_pred, average="weighted"))
+        f1_scores.append(f1_score(y_test, y_pred, average="weighted"))
+
+    # Print results
+    print("SVM with data leakage:")
+    print(f"Accuracy scores: {accuracy_scores}")
+    print(f"Precision scores: {precision_scores}")
+    print(f"Recall scores: {recall_scores}")
+    print(f"F1 scores: {f1_scores}")
+    print(f"Mean Accuracy: {np.mean(accuracy_scores):.2f}")
+    print(f"Mean Precision: {np.mean(precision_scores):.2f}")
+    print(f"Mean Recall: {np.mean(recall_scores):.2f}")
+    print(f"Mean F1 Score: {np.mean(f1_scores):.2f}")
 
 
 data_leak_anal(x, y)
@@ -246,47 +245,61 @@ data_leak_anal(x, y)
 
 
 def run_correct_anal(x, y):
-
+    # Cross-validation setup
     imputer = SimpleImputer(strategy="mean")  # Handle missing values
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    # Custom Scorer (F1 Score for Classification)
-    f1_scorer = make_scorer(f1_score, average="weighted")
+    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=seed)
 
-    # Define the Pipeline
-    pipeline = Pipeline(
-        [
-            ("imputer", imputer),  # Handle missing values
-            ("scaler", StandardScaler()),  # Standardize the data
-            ("svm", SVC(random_state=42)),  # SVM Classifier
-        ]
-    )
+    # Metrics for each fold
+    accuracy_scores = []
+    precision_scores = []
+    recall_scores = []
+    f1_scores = []
 
-    # Define Hyperparameter Grid
-    param_grid = {
-        "svm__C": [0.1, 1, 10, 100],
-        "svm__kernel": ["linear"],
-        "svm__gamma": ["scale", "auto"],
-    }
+    # Run cross-validation
+    for train_idx, test_idx in cv.split(x, y):
+        # Use .iloc for row-based indexing
+        x_train, x_test = x.iloc[train_idx], x.iloc[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
 
-    # Perform Grid Search with Cross-Validation
-    grid_search = GridSearchCV(
-        estimator=pipeline,
-        param_grid=param_grid,
-        scoring=f1_scorer,
-        cv=cv,
-        n_jobs=-1,  # Parallelize across CPUs
-        verbose=1,
-    )
+        # Define the pipeline
+        pipeline = Pipeline(
+            [
+                (
+                    "imputer",
+                    SimpleImputer(strategy="mean"),
+                ),  # Handle missing values
+                ("scaler", StandardScaler()),  # Standardize the data
+                (
+                    "svm",
+                    SVC(C=1, kernel="linear", random_state=seed),
+                ),  # SVM Classifier
+            ]
+        )
 
-    # Fit Grid Search
-    grid_search.fit(x, y)
+        # Fit the pipeline
+        pipeline.fit(x_train, y_train)
 
-    # Output the best parameters and F1 score
-    print("SVM with no data leakage: ")
-    print(f"Best Parameters: {grid_search.best_params_}")
-    print(f"Best Mean F1 Score: {grid_search.best_score_:.2f}")
-    feature_importances = grid_search.best_estimator_.named_steps["svm"].coef_
-    print("Feature Importances:", feature_importances)
+        # Predict on test set
+        y_pred = pipeline.predict(x_test)
+
+        # Calculate metrics
+        accuracy_scores.append(accuracy_score(y_test, y_pred))
+        precision_scores.append(
+            precision_score(y_test, y_pred, average="weighted")
+        )
+        recall_scores.append(recall_score(y_test, y_pred, average="weighted"))
+        f1_scores.append(f1_score(y_test, y_pred, average="weighted"))
+
+    # Print results
+    print("\nSVM with no data leakage:")
+    print(f"Accuracy scores: {accuracy_scores}")
+    print(f"Precision scores: {precision_scores}")
+    print(f"Recall scores: {recall_scores}")
+    print(f"F1 scores: {f1_scores}")
+    print(f"Mean Accuracy: {np.mean(accuracy_scores):.2f}")
+    print(f"Mean Precision: {np.mean(precision_scores):.2f}")
+    print(f"Mean Recall: {np.mean(recall_scores):.2f}")
+    print(f"Mean F1 Score: {np.mean(f1_scores):.2f}")
 
 
 run_correct_anal(x, y)
