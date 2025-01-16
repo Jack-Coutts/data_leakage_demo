@@ -2,7 +2,6 @@ import pandas as pd
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.cross_decomposition import PLSRegression
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import (
@@ -10,27 +9,18 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
-    confusion_matrix,
-    classification_report,
 )
 from sklearn.model_selection import (
     StratifiedKFold,
-    cross_val_score,
-    GridSearchCV,
 )
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
     f1_score,
-    make_scorer,
-    confusion_matrix,
-    classification_report,
 )
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
-from sklearn.impute import KNNImputer
 
 # dataset being used: https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data
 
