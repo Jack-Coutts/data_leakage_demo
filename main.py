@@ -13,8 +13,13 @@ from sklearn.metrics import (
     confusion_matrix,
     classification_report,
 )
+from sklearn.model_selection import KFold
 
 # dataset being used: https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data
+
+###########################################
+### Ingest Data ###
+###########################################
 
 
 # function to print output to the terminal
@@ -24,17 +29,116 @@ def print_to_console(input):
     print(f"The input data type is: {type(input)}")
 
 
-# read in the Iris CSV file
+# read in the CSV file
 complete_iris_dataset = pd.read_csv("data/breast_cancer_wisconsin.csv")
 print_to_console(complete_iris_dataset)
 
 # separate the class, y, data
-iris_class = complete_iris_dataset["diagnosis"]
-print_to_console(iris_class)
+y = complete_iris_dataset["diagnosis"]
+print_to_console(y)
 
 # separate the non-class, x, data
-input_data = complete_iris_dataset.drop("diagnosis", axis=1)
-print_to_console(input_data)
+x = complete_iris_dataset.drop("diagnosis", axis=1)
+print_to_console(x)
+
+
+###########################################
+### Create PCA for each "fake" CV fold ###
+###########################################
+
+# Seed for reproducibility
+np.random.seed(42)
+
+# Encode labels using sklearn's LabelEncoder
+label_encoder = LabelEncoder()
+y = label_encoder.fit_transform(y)  # "M" -> 0, "B" -> 1 (or similar)
+
+# Define the number of splits
+n_splits = 5
+
+# Create an array of the row indices
+indices = np.arange(0, len(x))
+
+# Shuffle order of indices for randomness
+np.random.shuffle(indices)
+
+# Split the indices
+split_indices = np.array_split(indices, n_splits)
+
+# Create an imputer and scaler to handle missing values
+imputer = SimpleImputer(
+    strategy="mean"
+)  # Replace missing values with column mean
+scaler = StandardScaler()  # Standardize features to mean=0, std=1
+
+# Define color map for binary classes
+color_map = {0: "orange", 1: "purple"}
+
+# Perform PCA and plot for each split
+for split_idx, train_indices in enumerate(split_indices):
+    train_data = x.iloc[train_indices]
+    train_labels = y[train_indices]
+
+    # Impute missing values
+    train_data = imputer.fit_transform(train_data)
+
+    # Standardize the data
+    train_data = scaler.fit_transform(train_data)
+
+    # Fit PCA on the training data
+    pca = PCA(n_components=2)  # Only 2 components in a plot
+    pca.fit(train_data)
+    transformed_data = pca.fit_transform(train_data)
+    explained_variance = (
+        pca.explained_variance_ratio_ * 100
+    )  # Percentage explained
+
+    # Create a scatter plot
+    plt.figure(figsize=(8, 6))
+    colours = [
+        color_map[label] for label in train_labels
+    ]  # Map labels to colors
+    scatter = plt.scatter(
+        transformed_data[:, 0],
+        transformed_data[:, 1],
+        c=colours,  # Use class labels for coloring
+        cmap="autumn",  # Yellow (0) and orange (1)
+        alpha=0.7,
+        edgecolor="k",
+    )
+    # Add a legend
+    for label, color in color_map.items():
+        # Use inverse_transform to display original labels
+        plt.scatter(
+            [],
+            [],
+            color=color,
+            label=f"Class {label_encoder.inverse_transform([label])[0]}",
+        )
+
+    plt.legend(title="Class Labels")
+    plt.title(f"PCA Plot - Split {split_idx + 1}")
+    plt.xlabel(
+        f"Principal Component 1 ({explained_variance[0]:.2f}% Variance Explained)"
+    )
+    plt.ylabel(
+        f"Principal Component 2 ({explained_variance[1]:.2f}% Variance Explained)"
+    )
+    plt.grid(True)
+
+    # Save the plot to a file
+    filename = f"outputs/pca_plot_split_{split_idx + 1}.png"
+    plt.savefig(filename, dpi=300)
+    plt.close()  # Close the figure to free memory
+
+    print(f"PCA plot for Split {split_idx + 1} saved as {filename}")
+
+
+###########################################
+###########################################
+###########################################
+###########################################
+"""
 
 # impute
 imputer = SimpleImputer(strategy="mean")
@@ -135,3 +239,5 @@ plt.ylabel("PLS Component 2")
 plt.legend()
 plt.grid()
 plt.show()
+
+"""
