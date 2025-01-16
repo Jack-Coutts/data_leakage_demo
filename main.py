@@ -91,7 +91,7 @@ print(x)
 ###########################################
 
 
-def create_pcas(x, y):
+def create_pcas(x, y, data_leak=False):
 
     # Define the number of splits
     n_splits = 5
@@ -111,6 +111,13 @@ def create_pcas(x, y):
     )  # Replace missing values with column mean
     scaler = StandardScaler()  # Standardize features to mean=0, std=1
 
+    if data_leak:
+        # Impute missing values
+        x = pd.DataFrame(imputer.fit_transform(x), columns=x.columns)
+
+        # Standardize the data
+        x = pd.DataFrame(scaler.fit_transform(x), columns=x.columns)
+
     # Define color map for binary classes
     color_map = {0: "orange", 1: "purple"}
 
@@ -119,11 +126,12 @@ def create_pcas(x, y):
         train_data = x.iloc[train_indices]
         train_labels = y[train_indices]
 
-        # Impute missing values
-        train_data = imputer.fit_transform(train_data)
+        if not data_leak:
+            # Impute missing values
+            train_data = imputer.fit_transform(train_data)
 
-        # Standardize the data
-        train_data = scaler.fit_transform(train_data)
+            # Standardize the data
+            train_data = scaler.fit_transform(train_data)
 
         # Fit PCA on the training data
         pca = PCA(n_components=2)  # Only 2 components in a plot
@@ -166,7 +174,11 @@ def create_pcas(x, y):
         plt.grid(True)
 
         # Save the plot to a file
-        filename = f"outputs/pca_plot_split_{split_idx + 1}.png"
+        if data_leak:
+            filename = f"outputs/dl_pca_plot_split_{split_idx + 1}.png"
+        else:
+            filename = f"outputs/pca_plot_split_{split_idx + 1}.png"
+
         plt.savefig(filename, dpi=300)
         plt.close()  # Close the figure to free memory
 
@@ -227,8 +239,6 @@ def data_leak_anal(x, y):
     print(f"Mean F1 Score: {np.mean(f1_scores):.2f}")
 
 
-data_leak_anal(x, y)
-
 ###########################################
 ### Run SVM with no data leakage ###
 ###########################################
@@ -256,7 +266,7 @@ def run_correct_anal(x, y):
             [
                 (
                     "imputer",
-                    SimpleImputer(strategy="mean"),
+                    imputer,
                 ),  # Handle missing values
                 ("scaler", StandardScaler()),  # Standardize the data
                 (
@@ -292,4 +302,11 @@ def run_correct_anal(x, y):
     print(f"Mean F1 Score: {np.mean(f1_scores):.2f}")
 
 
+#########################
+########################
+########################
+
+create_pcas(x, y, True)
+create_pcas(x, y)
+data_leak_anal(x, y)
 run_correct_anal(x, y)
