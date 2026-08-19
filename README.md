@@ -52,7 +52,7 @@ whether the hidden patients got a say in which readings to use.
 
 The cheat gets **84%** of patients right. Doing it properly gets **56%**.
 
-56% is a coin flip with a limp. It is also the honest answer: with 80 people and
+56% is a coin flip with. It is also the honest answer: with 80 people and
 8 real signals buried in 392 noise columns, there is very little here to find.
 84% is the number that ends up on a slide.
 
